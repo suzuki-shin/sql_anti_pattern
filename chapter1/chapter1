@@ -1,0 +1,105 @@
+** 1 ジェイウォーク（信号無視）
+*** 1.1 目的：複数の値を持つ属性を格納する
+一つの連絡先を持つ場合
+==
+CREATE TABLE Products (
+product_id SERIAL PRIMARY KEY,
+product_name VARCHAR(1000),
+account_id BIGINT UNSIGNED,
+-- 他の列. . .
+FOREIGN KEY (account_id) REFERENCES Accounts(account_id)
+);
+INSERT INTO Products (product_id, product_name, account_id) VALUES (DEFAULT, 'Visual TurboBuilder', 12);
+==
+
+*** 1.2 アンチパターン：カンマ区切りフォーマットのリストを格納する
+複数の連絡先を持つ場合(カンマ区切りでもつことにした)
+==
+CREATE TABLE Products (
+product_id SERIAL PRIMARY KEY,
+product_name VARCHAR(1000),
+account_id VARCHAR(100) -- カンマ区切りのリスト
+-- 他の列. . .
+);
+-- DEFAULTってやったらsqliteではエラーになった
+INSERT INTO Products (product_id, product_name, account_id) VALUES (DEFAULT, 'Visual TurboBuilder', '12,34');
+-- INSERT INTO Products (product_id, product_name, account_id) VALUES (1, 'Visual TurboBuilder', '12,34');
+==
+
+**** 1.2.1 特定アカウントに関連する製品の検索
+等価性による比較ができなくなるため、何らかの文字列パターンに対するパターンマッチが必要になる
+==
+SELECT * FROM Products WHERE account_id REGEXP '[[:<:]]12[[:>:]]'; -- なにこれ？こんなんあるの？
+==
+
+http://dev.mysql.com/doc/refman/5.1/ja/regexp.html
+> [[:<:]], [[:>:]]
+> 
+> これらのマーカは語境界を参考にしています。これらは語の最初と最後それぞれにマッチします。単語とはその前後に別の単語文字が存在しない、単語文字のシーケンスと定義されています。 単語文字とは、alnum クラス、またはアンダースコア ( _ ) での英数文字のことです。
+> 
+> mysql> SELECT 'a word a' REGEXP '[[:<:]]word[[:>:]]';   -> 1
+> mysql> SELECT 'a xword a' REGEXP '[[:<:]]word[[:>:]]';  -> 0
+
+==
+-- sqlite3ではエラーになった
+sqlite> SELECT * FROM Products WHERE account_id REGEXP '[[:<:]]12[[:>:]]';
+Error: no such function: REGEXP
+==
+
+==
+[05-17 18:22:11 root@s-dev01 /root]
+/usr/local/pgsql/bin/psql -h localhost -p 15432 -U postgres -d sql_anti_pattern
+-- postgresだとこれで行けた
+sql_anti_pattern=# SELECT * FROM Products WHERE account_id ~ '[[:<:]]12[[:>:]]';
+ product_id |    product_name     | account_id
+------------+---------------------+------------
+          1 | Visual TurboBuilder | 12,34
+(1 行)
+==
+
+**** 1.2.2 特定の製品に関連するアカウントの検索
+==
+CREATE TABLE Accounts (
+account_id SERIAL PRIMARY KEY,
+account_name VARCHAR(20),
+first_name VARCHAR(20),
+last_name VARCHAR(20),
+email VARCHAR(100),
+password_hash CHAR(64),
+-- portrait_image BLOB,
+portrait_image BYTEA, -- postgresでやってるので
+hourly_rate NUMERIC(9,2)
+);
+==
+
+== mysql
+SELECT * FROM Products AS p INNER JOIN Accounts AS a
+	ON p.account_id REGEXP '[[:<:]]' || a.account_id || '[[:>:]]'
+WHERE p.product_id = 123;
+==
+
+== postgres
+-- エラーになる。書き方がよく分からん
+SELECT * FROM Products AS p INNER JOIN Accounts AS a
+	ON (p.account_id ~ '[[:<:]]' || a.account_id || '[[:>:]]')
+WHERE p.product_id = 123;
+==
+
+このようなクエリではINDEXが使えない。両方のテーブルをすべてスキャンして、クロス積を生成し、すべての組み合わせについて正規表現を評価する
+
+**** 1.2.3 集約クエリの作成
+==
+sql_anti_pattern=# SELECT product_id, LENGTH(account_id) - LENGTH(REPLACE(account_id, ',', '')) + 1
+sql_anti_pattern-# AS contacts_per_product
+sql_anti_pattern-# FROM Products;
+ product_id | contacts_per_product
+------------+----------------------
+          1 |                    2
+==
+
+**** 1.2.4 特定の製品に関連するアカウントの更新
+
+
+*** 1.3 アンチパターンの見つけたか
+*** 1.4 アンチパターンを用いても良い場合
+*** 1.5 解決策：交差テーブルを作成する
