@@ -98,8 +98,30 @@ sql_anti_pattern-# FROM Products;
 ==
 
 **** 1.2.4 特定の製品に関連するアカウントの更新
+***** 文字列連結でリストの末尾に新しいIDを追加する
+==
+UPDATE Products SET account_id = account_id || ',' || 56 WHERE product_id = 1;
+==
+ただし、この方法はリストのソート順を維持できなくなる場合がある
+
+***** IDをリストから削除する
+==
+==
+
+**** 1.2.5 製品IDの妥当性検証
+ユーザーが“banana” のような無効な入力を行ってしまうことを、どうやったら防げるでしょうか。
+==
+INSERT INTO Products (product_id, product_name, account_id)
+VALUES (DEFAULT, 'Visual TurboBuilder', '12,34,banana');
+==
+
+=> プログラム側でチェックする等
+
+**** 1.2.6 区切り文字の選択
+**** 1.2.7 リストの長さの制限
+
+*** 1.3 アンチパターンの見つけかた
 
 
-*** 1.3 アンチパターンの見つけたか
 *** 1.4 アンチパターンを用いても良い場合
 *** 1.5 解決策：交差テーブルを作成する
